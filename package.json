@@ -1,5 +1,5 @@
 {
-  "name": "node=natural-mouse",
+  "name": "node-natural-mouse",
   "version": "1.0.0",
   "description": "Node.js module for natural mouse motion",
   "main": "index.js",
