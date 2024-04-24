@@ -6,6 +6,22 @@ https://github.com/barrybingo/CNaturalMouseMotion
 
 There are missing features in the C++11 implementation, and I will be adding them as I need them. I will also be adding a few more features that I think are useful.
 
+
+### Installation Instructions ###
+```bash
+npm install natural-mouse-motion
+yarn add natural-mouse-motion
+```
+### Usage ###
+```javascript
+const { move } = require('natural-mouse-motion');
+
+move("fastGamer", 250, 250);
+```
+
+
+
+
 Below is the original README.md from the C++ implementation:
 
 ## CNaturalMouseMotion ##
