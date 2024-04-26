@@ -1,6 +1,6 @@
 {
-  "name": "node-natural-mouse",
-  "version": "1.0.1",
+  "name": "natural-mouse-motion",
+  "version": "1.0.2",
   "description": "Node.js module for natural mouse motion",
   "homepage": "https://github.com/veemex/node-natural-mouse",
   "author": "Trofin Cosmin Mihai",
