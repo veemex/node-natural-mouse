@@ -1,11 +1,19 @@
 // ─── Core ────────────────────────────────────────────────────────────────────
 export { move, generatePath } from './mouse-motion.js';
+export { MouseController } from './mouse-controller.js';
 
 // ─── Types & Interfaces ─────────────────────────────────────────────────────
 export type {
   Point,
   Dimension,
   FlowWithTime,
+  MoveOptions,
+  MouseButton,
+  MouseControllerEvents,
+  MouseControllerOptions,
+  MouseEventListener,
+  MouseEventName,
+  MouseEventPayload,
   NoiseProvider,
   DeviationProvider,
   SpeedManager,

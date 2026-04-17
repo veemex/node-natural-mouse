@@ -4,3 +4,5 @@ build/
 .DS_Store
 *.tsbuildinfo
 .idea/
+.sisyphus/
+package-lock.json

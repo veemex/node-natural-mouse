@@ -64,6 +64,29 @@ describe('Flow', () => {
     const size = flow.getStepSize(0, 10, 0.5);
     expect(size).toBe(0);
   });
+
+  it('should handle completion near 1.0 without NaN', () => {
+    const flow = new Flow(FlowTemplates.constantSpeed());
+    const size = flow.getStepSize(100, 1, 0);
+
+    expect(Number.isFinite(size)).toBe(true);
+    expect(size).toBeCloseTo(100, 10);
+  });
+
+  it('should not produce NaN for single-step movement', () => {
+    const flow = new Flow(FlowTemplates.variatingFlow());
+    const size = flow.getStepSize(500, 1, 0);
+
+    expect(Number.isFinite(size)).toBe(true);
+  });
+
+  it('should return finite values across full completion range', () => {
+    const flow = new Flow(FlowTemplates.variatingFlow());
+
+    for (let i = 0; i < 100; i++) {
+      expect(Number.isFinite(flow.getStepSize(100, 100, i / 100))).toBe(true);
+    }
+  });
 });
 
 describe('FlowTemplates', () => {

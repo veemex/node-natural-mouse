@@ -204,3 +204,51 @@ export interface MotionNature {
    */
   directionBias?: number;
 }
+
+// ─── Move Options ────────────────────────────────────────────────────────────
+
+/** Options for the move() function */
+export interface MoveOptions {
+  /**
+   * AbortSignal to cancel the movement mid-flight.
+   * When aborted, move() rejects with an error whose `name` is `'AbortError'`.
+   * The cursor stays wherever it was at the time of cancellation.
+   *
+   * @example
+   * ```ts
+   * const controller = new AbortController();
+   * setTimeout(() => controller.abort(), 500);
+   * await move(nature, 500, 300, { signal: controller.signal });
+   * ```
+   */
+  signal?: AbortSignal;
+}
+
+// ─── Mouse Controller ────────────────────────────────────────────────────────
+
+export type MouseButton = 'left' | 'right';
+
+export interface MouseEventPayload {
+  x: number;
+  y: number;
+}
+
+export interface MouseControllerEvents {
+  start: MouseEventPayload;
+  complete: MouseEventPayload;
+  cancelled: MouseEventPayload;
+}
+
+export type MouseEventName = keyof MouseControllerEvents;
+
+export type MouseEventListener<E extends MouseEventName> = (
+  payload: MouseControllerEvents[E],
+) => void;
+
+export interface MouseControllerOptions {
+  /**
+   * Click callback. Invoked when click() or rightClick() is called.
+   * If omitted, click() and rightClick() throw an error.
+   */
+  click?: (button: MouseButton) => void | Promise<void>;
+}

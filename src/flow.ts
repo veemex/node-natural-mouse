@@ -53,6 +53,7 @@ export class Flow {
   private getBucketsContents(bucketFrom: number, bucketUntil: number): number {
     let sum = 0;
     for (let i = Math.floor(bucketFrom); i < bucketUntil; i++) {
+      if (i < 0 || i >= this.buckets.length) continue;
       let value = this.buckets[i];
       let endMultiplier = 1;
       let startMultiplier = 0;

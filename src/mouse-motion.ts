@@ -1,8 +1,56 @@
 import { MovementFactory } from './movement-factory.js';
-import type { Dimension, MotionNature, Point } from './types.js';
+import type { Dimension, MoveOptions, MotionNature, Point, SystemCalls } from './types.js';
 import { roundTowards } from './utils.js';
 
 const SLEEP_AFTER_ADJUSTMENT_MS = 2;
+
+function getAbortReason(signal?: AbortSignal): unknown {
+  if (signal?.reason !== undefined) return signal.reason;
+  const err = new Error('The operation was aborted.');
+  err.name = 'AbortError';
+  return err;
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throw getAbortReason(signal);
+}
+
+function abortableSleep(
+  systemCalls: SystemCalls,
+  ms: number,
+  signal?: AbortSignal,
+): Promise<void> {
+  throwIfAborted(signal);
+  if (!signal) return systemCalls.sleep(ms);
+
+  return new Promise<void>((resolve, reject) => {
+    const onAbort = () => reject(getAbortReason(signal));
+    signal.addEventListener('abort', onAbort, { once: true });
+    systemCalls.sleep(ms).then(
+      () => { signal.removeEventListener('abort', onAbort); resolve(); },
+      (err) => { signal.removeEventListener('abort', onAbort); reject(err); },
+    );
+  });
+}
+
+function validateCoordinates(x: number, y: number, label: string): void {
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    throw new TypeError(
+      `Invalid ${label}: (${x}, ${y}). Coordinates must be finite numbers.`,
+    );
+  }
+}
+
+function validateScreenSize(screenSize: Dimension): void {
+  if (
+    !Number.isFinite(screenSize.width) || screenSize.width <= 0 ||
+    !Number.isFinite(screenSize.height) || screenSize.height <= 0
+  ) {
+    throw new RangeError(
+      `Invalid screen size: ${screenSize.width}x${screenSize.height}. Dimensions must be positive.`,
+    );
+  }
+}
 
 /**
  * Move the mouse cursor smoothly to the destination coordinates,
@@ -11,29 +59,63 @@ const SLEEP_AFTER_ADJUSTMENT_MS = 2;
  * This is an async operation that resolves when the cursor reaches
  * its final position (including any overshoot corrections).
  *
+ * **Concurrency:** This function does not protect against concurrent calls.
+ * If you call move() while a previous move() is still in flight, both will
+ * race on setMousePosition(). Use AbortSignal to cancel a previous movement:
+ *
+ * @example
+ * ```ts
+ * let controller: AbortController | undefined;
+ *
+ * async function moveTo(nature: MotionNature, x: number, y: number) {
+ *   controller?.abort();
+ *   controller = new AbortController();
+ *   try {
+ *     await move(nature, x, y, { signal: controller.signal });
+ *   } catch (err) {
+ *     if (err instanceof Error && err.name === 'AbortError') return;
+ *     throw err;
+ *   }
+ * }
+ * ```
+ *
  * @param nature - The motion nature configuration (providers, timing, backend)
  * @param xDest - Target X coordinate
  * @param yDest - Target Y coordinate
+ * @param options - Optional configuration (AbortSignal for cancellation)
  */
-export async function move(nature: MotionNature, xDest: number, yDest: number): Promise<void> {
+export async function move(
+  nature: MotionNature,
+  xDest: number,
+  yDest: number,
+  options?: MoveOptions,
+): Promise<void> {
+  const signal = options?.signal;
+
+  validateCoordinates(xDest, yDest, 'destination');
+
   const screenSize: Dimension = nature.systemCalls.getScreenSize();
+  validateScreenSize(screenSize);
+
+  throwIfAborted(signal);
+
   let mousePosition: Point = nature.systemCalls.getMousePosition();
 
-  // Clamp destination to screen bounds
   const clampedX = Math.max(0, Math.min(screenSize.width - 1, Math.round(xDest)));
   const clampedY = Math.max(0, Math.min(screenSize.height - 1, Math.round(yDest)));
 
   const factory = new MovementFactory(nature, clampedX, clampedY);
 
-  // Already at destination — nothing to do
   if (mousePosition.x === clampedX && mousePosition.y === clampedY) {
     return;
   }
 
   let movements = factory.createMovements(mousePosition);
+
+  throwIfAborted(signal);
+
   while (mousePosition.x !== clampedX || mousePosition.y !== clampedY) {
     if (movements.length === 0) {
-      // Shouldn't normally happen, but re-attempt from current position if needed
       mousePosition = nature.systemCalls.getMousePosition();
       movements = factory.createMovements(mousePosition);
     }
@@ -42,6 +124,8 @@ export async function move(nature: MotionNature, xDest: number, yDest: number): 
     if (!movement) {
       break;
     }
+
+    throwIfAborted(signal);
 
     const distance = movement.distance;
     const mouseMovementMs = movement.time;
@@ -124,28 +208,28 @@ export async function move(nature: MotionNature, xDest: number, yDest: number): 
         nature.observer(mousePosX, mousePosY);
       }
 
-      // Sleep for remaining step time (compensating for execution time)
+      // Absolute-time scheduling: each step targets a fixed wall-clock time.
+      // If a step overshoots its budget, subsequent sleeps shrink to compensate.
       const timeLeft = endTime - nature.systemCalls.currentTimeMillis();
       if (timeLeft > 0) {
-        await nature.systemCalls.sleep(timeLeft);
+        await abortableSleep(nature.systemCalls, timeLeft, signal);
       }
     }
 
     mousePosition = nature.systemCalls.getMousePosition();
 
-    // If we didn't land exactly on the sub-target, correct
     if (mousePosition.x !== movement.destX || mousePosition.y !== movement.destY) {
+      throwIfAborted(signal);
       await nature.systemCalls.setMousePosition(movement.destX, movement.destY);
-      await nature.systemCalls.sleep(SLEEP_AFTER_ADJUSTMENT_MS);
+      await abortableSleep(nature.systemCalls, SLEEP_AFTER_ADJUSTMENT_MS, signal);
       mousePosition = nature.systemCalls.getMousePosition();
     }
 
-    // If this was an overshoot (not final target), simulate human reaction time
     if (mousePosition.x !== clampedX || mousePosition.y !== clampedY) {
       const reactionTime =
         nature.reactionTimeBaseMs +
         Math.floor(nature.random() * nature.reactionTimeVariationMs);
-      await nature.systemCalls.sleep(reactionTime);
+      await abortableSleep(nature.systemCalls, reactionTime, signal);
     }
   }
 }
@@ -175,7 +259,12 @@ export function generatePath(
   xDest: number,
   yDest: number,
 ): Point[] {
+  validateCoordinates(xDest, yDest, 'destination');
+  validateCoordinates(from.x, from.y, 'from position');
+
   const screenSize: Dimension = nature.systemCalls.getScreenSize();
+  validateScreenSize(screenSize);
+
   const path: Point[] = [];
 
   const clampedX = Math.max(0, Math.min(screenSize.width - 1, Math.round(xDest)));
